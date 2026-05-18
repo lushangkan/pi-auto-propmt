@@ -5,13 +5,13 @@
   "type": "module",
   "license": "MIT",
   "author": "",
-  "homepage": "https://github.com/zara/pi-auto-prompt#readme",
+  "homepage": "https://github.com/lushangkan/pi-auto-prompt#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zara/pi-auto-prompt.git"
+    "url": "git+https://github.com/lushangkan/pi-auto-prompt.git"
   },
   "bugs": {
-    "url": "https://github.com/zara/pi-auto-prompt/issues"
+    "url": "https://github.com/lushangkan/pi-auto-prompt/issues"
   },
   "keywords": [
     "pi-package",
