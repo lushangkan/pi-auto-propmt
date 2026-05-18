@@ -1,4 +1,18 @@
-## ADDED Requirements
+## Requirements
+
+### Requirement: Installable Pi Package
+
+The extension SHALL be packaged as a standard Pi package that can be installed from npm, GitHub, or a local path with `pi install` or loaded with `pi -e`.
+
+#### Scenario: Package declares extension resources
+
+- **WHEN** Pi reads the package manifest
+- **THEN** `package.json` declares the extension entry through the `pi.extensions` field
+
+#### Scenario: Package is packed for npm
+
+- **WHEN** the package is packed for publication
+- **THEN** the tarball includes the extension files, README, license, package manifest, and example prompt files without requiring a project-local `.pi/extensions/` directory
 
 ### Requirement: Prompt Directory Discovery
 

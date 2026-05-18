@@ -1,0 +1,54 @@
+{
+  "name": "pi-auto-prompt",
+  "version": "0.1.0",
+  "description": "Pi extension that injects project-local model-specific system prompt Markdown before each agent run.",
+  "type": "module",
+  "license": "MIT",
+  "author": "",
+  "homepage": "https://github.com/zara/pi-auto-prompt#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zara/pi-auto-prompt.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zara/pi-auto-prompt/issues"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "prompt",
+    "system-prompt",
+    "model-prompts"
+  ],
+  "files": [
+    "extensions/",
+    "examples/",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./extensions/model-prompts/index.ts",
+    "./core": "./extensions/model-prompts/core.ts"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/model-prompts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import tsx tests/*.test.ts",
+    "lint": "tsc --noEmit",
+    "pack:dry-run": "npm pack --dry-run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.1",
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.7.3"
+  }
+}
