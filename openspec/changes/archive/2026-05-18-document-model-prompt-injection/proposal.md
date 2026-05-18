@@ -4,7 +4,8 @@ Pi users often switch between model families that benefit from different operati
 
 ## What Changes
 
-- Add a model-aware prompt injection extension design that scans a project prompt directory for Markdown snippets.
+- Add a model-aware prompt injection extension packaged as a standard Pi package with a `pi.extensions` manifest for `pi install`.
+- Scan each consuming project's prompt directory for Markdown snippets.
 - Inject `all.md` for every model before any model-specific prompt.
 - Match model-specific prompt files by fuzzy substring matching against the active model identity after removing `.md` and optional `@version` suffixes.
 - Support multiple prompt variants per model using filenames like `gpt-5.5@strict.md`.
@@ -23,6 +24,6 @@ Pi users often switch between model families that benefit from different operati
 
 ## Impact
 
-- Adds project documentation for a Pi extension/plugin under this OpenSpec change.
-- Future implementation will affect Pi extension code, prompt file conventions, command registration, and validation tests.
+- Adds an npm/GitHub-distributable Pi package containing the model prompt extension.
+- Affects Pi extension code, prompt file conventions, command registration, package metadata, and validation tests.
 - No provider API changes are required; the extension should use Pi lifecycle hooks and command APIs.

@@ -1,6 +1,6 @@
 ## Context
 
-Pi extensions can subscribe to lifecycle events and register slash commands. The model prompt extension will use Pi's `before_agent_start` lifecycle hook to prepend resolved prompt snippets to the effective system prompt for each agent run, and a registered command to inspect or switch the active prompt variant.
+Pi extensions can subscribe to lifecycle events and register slash commands. The model prompt extension will be distributed as a standard Pi package with a `pi.extensions` manifest. It will use Pi's `before_agent_start` lifecycle hook to prepend resolved prompt snippets to the effective system prompt for each agent run, and a registered command to inspect or switch the active prompt variant.
 
 The feature is driven by plain Markdown files in a prompt directory. Users author files such as `all.md`, `gpt-5.5.md`, and `gpt-5.5@strict.md`; the extension resolves the current model to one model prompt family and injects at most one selected variant in addition to `all.md`.
 
@@ -12,6 +12,7 @@ The feature is driven by plain Markdown files in a prompt directory. Users autho
 - Provide deterministic prompt file discovery, fuzzy model matching, version selection, and injection ordering.
 - Provide a small command surface for viewing current resolution and switching the current model family's prompt variant.
 - Keep the implementation testable through isolated filename parsing, resolution, and assembly functions.
+- Package the extension so it can be installed from GitHub or npm with `pi install`.
 
 **Non-Goals:**
 
@@ -36,6 +37,21 @@ The extension will return a rewritten `systemPrompt` from `before_agent_start`:
 ```
 
 This satisfies the requirement to add content at the top of the system prompt without replacing Pi's existing prompt. Returning a separate message is rejected because it would create a context message rather than a system prompt prefix. Rewriting provider payloads in `before_provider_request` is rejected for v1 because it is provider-specific and harder to inspect through Pi's system-prompt APIs.
+
+### Package as a standard Pi extension package
+
+The implementation will live under `extensions/model-prompts/` rather than a project-local `.pi/extensions/` directory. `package.json` will declare:
+
+```json
+{
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions/model-prompts"]
+  }
+}
+```
+
+This makes the repository suitable for GitHub and npm distribution and allows users to install it with `pi install npm:pi-auto-prompt`, `pi install git:github.com/<owner>/pi-auto-prompt`, or `pi -e <path>` during development.
 
 ### Treat prompt files as extension-owned configuration
 
@@ -94,7 +110,7 @@ The command must fail softly when no prompt directory, no matching model family,
 
 ## Migration Plan
 
-This is a new extension capability, so no existing users need migration. Implementation can be rolled out by adding the extension file, creating `.pi/model-prompts/prompts/`, and optionally adding sample prompt files. Rollback is removing or disabling the extension; prompt files are inert without it.
+This is a new extension capability, so no existing users need migration. Implementation can be rolled out by installing the package, creating `.pi/model-prompts/prompts/` in the consuming project, and optionally copying sample prompt files from `examples/`. Rollback is removing or disabling the installed package; prompt files are inert without it.
 
 ## Open Questions
 
