@@ -87,7 +87,10 @@ export function parsePromptFilename(
 	if (filename !== path.basename(filename)) return undefined;
 	if (!filename.toLowerCase().endsWith(".md")) return undefined;
 	const stem = filename.slice(0, -3);
-	if (stem === "all") return { kind: "global", filename };
+	const normalizedStem = normalizeKey(stem);
+	if (normalizedStem === "all") {
+		return filename === "all.md" ? { kind: "global", filename } : undefined;
+	}
 
 	const atIndex = stem.indexOf("@");
 	if (atIndex === -1) {
@@ -104,6 +107,7 @@ export function parsePromptFilename(
 	const modelKey = stem.slice(0, atIndex);
 	const version = stem.slice(atIndex + 1);
 	if (!isSafeSegment(modelKey) || !isSafeSegment(version)) return undefined;
+	if (normalizeKey(modelKey) === "all") return undefined;
 	return {
 		kind: "model",
 		filename,

@@ -48,6 +48,8 @@ Resolution order:
 2. One model-specific prompt for the active model family.
 3. Pi's original system prompt.
 
+`all.md` is an exact reserved filename. Variants such as `All.md` or `all@strict.md` are ignored rather than treated as global or model-specific prompts.
+
 The extension preserves Pi's existing system prompt; it only prepends resolved prompt content during `before_agent_start`.
 
 ## Model matching

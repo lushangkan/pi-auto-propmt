@@ -4,6 +4,9 @@ import * as os from "node:os";
 import * as path from "node:path";
 import test from "node:test";
 
+import modelPromptInjectionExtension, {
+	selectPromptVariant,
+} from "../extensions/model-prompts/index.ts";
 import {
 	PROMPT_RELATIVE_DIR,
 	STATE_RELATIVE_PATH,
@@ -25,10 +28,61 @@ function withTempProject(fn: (cwd: string) => void) {
 	}
 }
 
+async function withTempProjectAsync(fn: (cwd: string) => Promise<void>) {
+	const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "model-prompts-test-"));
+	try {
+		await fn(cwd);
+	} finally {
+		fs.rmSync(cwd, { recursive: true, force: true });
+	}
+}
+
 function writePrompt(cwd: string, filename: string, content: string) {
 	const dir = path.join(cwd, PROMPT_RELATIVE_DIR);
 	fs.mkdirSync(dir, { recursive: true });
 	fs.writeFileSync(path.join(dir, filename), content, "utf8");
+}
+
+function getModelPromptHandler() {
+	let handler: ((args: string, ctx: any) => Promise<void>) | undefined;
+	modelPromptInjectionExtension({
+		on: () => {},
+		registerCommand: (name: string, command: { handler: typeof handler }) => {
+			if (name === "model-prompt") handler = command.handler;
+		},
+	} as any);
+	assert.ok(handler);
+	return handler;
+}
+
+function createCommandContext(
+	cwd: string,
+	overrides: {
+		model?: unknown;
+		hasUI?: boolean;
+		selectResult?: string;
+	} = {},
+) {
+	const notifications: Array<{ message: string; type?: string }> = [];
+	const selections: Array<{ title: string; options: string[] }> = [];
+	return {
+		ctx: {
+			cwd,
+			model: overrides.model ?? { id: "provider/ikun-gpt-5.5" },
+			hasUI: overrides.hasUI ?? true,
+			ui: {
+				select: async (title: string, options: string[]) => {
+					selections.push({ title, options });
+					return overrides.selectResult;
+				},
+				notify: (message: string, type?: string) => {
+					notifications.push({ message, type });
+				},
+			},
+		},
+		notifications,
+		selections,
+	};
 }
 
 test("parses global, default, variant, and invalid prompt filenames", () => {
@@ -49,6 +103,8 @@ test("parses global, default, variant, and invalid prompt filenames", () => {
 		normalizedModelKey: "gpt-5.5",
 		version: "strict",
 	});
+	assert.equal(parsePromptFilename("All.md"), undefined);
+	assert.equal(parsePromptFilename("all@strict.md"), undefined);
 	assert.equal(parsePromptFilename("bad@@name.md"), undefined);
 	assert.equal(parsePromptFilename("notes.txt"), undefined);
 });
@@ -57,6 +113,8 @@ test("discovers only direct Markdown children and reports invalid filenames", ()
 	withTempProject((cwd) => {
 		writePrompt(cwd, "all.md", "global");
 		writePrompt(cwd, "gpt-5.5.md", "default");
+		writePrompt(cwd, "All.md", "ignored uppercase global");
+		writePrompt(cwd, "all@strict.md", "ignored global variant");
 		writePrompt(cwd, "bad@@name.md", "ignored");
 		fs.writeFileSync(
 			path.join(cwd, PROMPT_RELATIVE_DIR, "notes.txt"),
@@ -78,8 +136,9 @@ test("discovers only direct Markdown children and reports invalid filenames", ()
 		);
 		assert.deepEqual(
 			catalog.diagnostics.ignoredFiles.map((file) => file.filename).sort(),
-			["bad@@name.md", "notes.txt"],
+			["All.md", "all@strict.md", "bad@@name.md", "notes.txt"],
 		);
+		assert.equal(catalog.models.has("all"), false);
 		assert.equal(catalog.models.has("gpt"), false);
 	});
 });
@@ -166,5 +225,112 @@ test("status output includes command smoke-test fields and state file can reset"
 		result = resolvePrompts(cwd, { id: "ikun-gpt-5.5" });
 		assert.equal(result.selectedVersion, undefined);
 		assert.equal(fs.existsSync(path.join(cwd, STATE_RELATIVE_PATH)), true);
+	});
+});
+
+test("bare command opens selector and persists a named variant", async () => {
+	await withTempProjectAsync(async (cwd) => {
+		writePrompt(cwd, "gpt-5.5.md", "default");
+		writePrompt(cwd, "gpt-5.5@creative.md", "creative");
+		const handler = getModelPromptHandler();
+		const { ctx, notifications, selections } = createCommandContext(cwd, {
+			selectResult: "creative",
+		});
+
+		await handler("", ctx);
+
+		assert.deepEqual(selections, [
+			{
+				title: "Select prompt variant for 'gpt-5.5':",
+				options: ["creative", "default"],
+			},
+		]);
+		assert.match(notifications.at(-1)?.message ?? "", /Selected 'creative'/);
+		const result = resolvePrompts(cwd, { id: "ikun-gpt-5.5" });
+		assert.equal(result.selectedVersion, "creative");
+		assert.equal(result.activeVariant, "creative");
+	});
+});
+
+test("bare command selecting default clears persisted selection", async () => {
+	await withTempProjectAsync(async (cwd) => {
+		writePrompt(cwd, "gpt-5.5.md", "default");
+		writePrompt(cwd, "gpt-5.5@strict.md", "strict");
+		setSelectedVersion(cwd, "gpt-5.5", "strict");
+		const handler = getModelPromptHandler();
+		const { ctx, notifications } = createCommandContext(cwd, {
+			selectResult: "default",
+		});
+
+		await handler("", ctx);
+
+		assert.match(notifications.at(-1)?.message ?? "", /Selected 'default'/);
+		const result = resolvePrompts(cwd, { id: "ikun-gpt-5.5" });
+		assert.equal(result.selectedVersion, undefined);
+		assert.equal(result.activeVariant, "default");
+	});
+});
+
+test("bare command cancellation leaves previous selection unchanged", async () => {
+	await withTempProjectAsync(async (cwd) => {
+		writePrompt(cwd, "gpt-5.5.md", "default");
+		writePrompt(cwd, "gpt-5.5@strict.md", "strict");
+		setSelectedVersion(cwd, "gpt-5.5", "strict");
+		const handler = getModelPromptHandler();
+		const { ctx, notifications } = createCommandContext(cwd);
+
+		await handler("", ctx);
+
+		assert.match(notifications.at(-1)?.message ?? "", /cancelled/);
+		const result = resolvePrompts(cwd, { id: "ikun-gpt-5.5" });
+		assert.equal(result.selectedVersion, "strict");
+		assert.equal(result.activeVariant, "strict");
+	});
+});
+
+test("bare command reports fallback paths without UI or matched model family", async () => {
+	await withTempProjectAsync(async (cwd) => {
+		writePrompt(cwd, "gpt-5.5.md", "default");
+		const handler = getModelPromptHandler();
+		const noUi = createCommandContext(cwd, { hasUI: false });
+		await handler("", noUi.ctx);
+		assert.deepEqual(noUi.selections, []);
+		assert.match(noUi.notifications.at(-1)?.message ?? "", /unavailable/);
+		assert.match(
+			noUi.notifications.at(-1)?.message ?? "",
+			/\/model-prompt status/,
+		);
+
+		const noMatch = createCommandContext(cwd, {
+			model: { id: "anthropic/claude-sonnet" },
+		});
+		await handler("", noMatch.ctx);
+		assert.deepEqual(noMatch.selections, []);
+		assert.match(
+			noMatch.notifications.at(-1)?.message ?? "",
+			/No model prompt family/,
+		);
+	});
+});
+
+test("selector helper reports when matched family has no available versions", async () => {
+	await withTempProjectAsync(async (cwd) => {
+		const { ctx, notifications, selections } = createCommandContext(cwd);
+		await selectPromptVariant(ctx as any, {
+			promptDir: path.join(cwd, PROMPT_RELATIVE_DIR),
+			identities: ["ikun-gpt-5.5"],
+			matchedModelKey: "gpt-5.5",
+			availableVersions: [],
+			injectedFiles: [],
+			contents: [],
+			diagnostics: {
+				warnings: [],
+				ignoredFiles: [],
+				readErrors: [],
+				missingDirectory: false,
+			},
+		});
+		assert.deepEqual(selections, []);
+		assert.match(notifications.at(-1)?.message ?? "", /No prompt variants/);
 	});
 });

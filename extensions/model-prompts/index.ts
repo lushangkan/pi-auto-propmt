@@ -1,10 +1,73 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type {
+	ExtensionAPI,
+	ExtensionCommandContext,
+} from "@earendil-works/pi-coding-agent";
 import {
 	assembleSystemPrompt,
 	formatResolutionStatus,
 	resolvePrompts,
 	setSelectedVersion,
+	type ResolutionResult,
 } from "./core.js";
+
+const EXPLICIT_USAGE =
+	"Use /model-prompt status, /model-prompt use <version>, or /model-prompt reset.";
+
+export async function selectPromptVariant(
+	ctx: ExtensionCommandContext,
+	result: ResolutionResult,
+): Promise<void> {
+	if (!result.matchedModelKey) {
+		ctx.ui.notify(
+			`No model prompt family matches the active model. ${EXPLICIT_USAGE}`,
+			"warning",
+		);
+		return;
+	}
+
+	if (!result.availableVersions.length) {
+		ctx.ui.notify(
+			`No prompt variants are available for '${result.matchedModelKey}'. ${EXPLICIT_USAGE}`,
+			"warning",
+		);
+		return;
+	}
+
+	if (!ctx.hasUI) {
+		ctx.ui.notify(
+			`Interactive model prompt selection is unavailable in this session. ${EXPLICIT_USAGE}`,
+			"warning",
+		);
+		return;
+	}
+
+	const selected = await ctx.ui.select(
+		`Select prompt variant for '${result.matchedModelKey}':`,
+		result.availableVersions,
+	);
+	if (!selected) {
+		ctx.ui.notify(
+			"Model prompt selection cancelled; previous selection unchanged.",
+			"info",
+		);
+		return;
+	}
+
+	if (selected === "default") {
+		setSelectedVersion(ctx.cwd, result.matchedModelKey, undefined);
+		ctx.ui.notify(
+			`Selected 'default' for '${result.matchedModelKey}' and cleared persisted selection.`,
+			"info",
+		);
+		return;
+	}
+
+	setSelectedVersion(ctx.cwd, result.matchedModelKey, selected);
+	ctx.ui.notify(
+		`Selected '${selected}' for '${result.matchedModelKey}'.`,
+		"info",
+	);
+}
 
 export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event, ctx) => {
@@ -39,7 +102,12 @@ export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
 			const [action, ...rest] = trimmed.split(/\s+/).filter(Boolean);
 			const result = resolvePrompts(ctx.cwd, ctx.model);
 
-			if (!action || action === "status") {
+			if (!action) {
+				await selectPromptVariant(ctx, result);
+				return;
+			}
+
+			if (action === "status") {
 				ctx.ui.notify(formatResolutionStatus(result), "info");
 				return;
 			}
@@ -100,7 +168,7 @@ export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
 			}
 
 			ctx.ui.notify(
-				`Unknown /model-prompt action '${action}'. Use: /model-prompt status, /model-prompt use <version>, or /model-prompt reset.`,
+				`Unknown /model-prompt action '${action}'. ${EXPLICIT_USAGE}`,
 				"warning",
 			);
 		},
