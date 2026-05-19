@@ -1,6 +1,6 @@
 {
   "name": "pi-auto-prompt",
-  "version": "0.1.0",
+  "version": "0.1.1-alpha",
   "description": "Pi extension that injects project-local model-specific system prompt Markdown before each agent run.",
   "type": "module",
   "license": "MIT",
