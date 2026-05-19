@@ -1,6 +1,6 @@
 # pi-auto-prompt
 
-`pi-auto-prompt` is a Pi extension package that automatically prepends project-local Markdown prompts to Pi's system prompt based on the active model.
+`pi-auto-prompt` is a Pi extension package that automatically prepends global and project-local Markdown prompts to Pi's system prompt based on the active model.
 
 It is packaged as a standard Pi package for GitHub/npm distribution and can be installed with `pi install`.
 
@@ -28,27 +28,35 @@ pi -e /absolute/path/to/pi-auto-prompt
 
 ## Prompt files
 
-In any project where the extension is installed, create:
+Create reusable global prompts in:
+
+```text
+~/.pi/model-prompts/prompts/
+```
+
+Create project-specific prompts in any consuming project at:
 
 ```text
 .pi/model-prompts/prompts/
 ```
 
-Then add Markdown files:
+Then add Markdown files to either directory:
 
 ```text
-.pi/model-prompts/prompts/all.md              # injected for every model
-.pi/model-prompts/prompts/gpt-5.5.md          # default prompt for matched model family
-.pi/model-prompts/prompts/gpt-5.5@strict.md   # named variant for that model family
+all.md              # injected for every model from that source
+gpt-5.5.md          # default prompt for matched model family
+gpt-5.5@strict.md   # named variant for that model family
 ```
 
 Resolution order:
 
-1. `all.md`, when present and non-empty.
-2. One model-specific prompt for the active model family.
-3. Pi's original system prompt.
+1. Global `all.md`, when present and non-empty.
+2. Project `all.md`, when present and non-empty.
+3. One global model-specific prompt for the active model family.
+4. One project model-specific prompt for the active model family.
+5. Pi's original system prompt.
 
-`all.md` is an exact reserved filename. Variants such as `All.md` or `all@strict.md` are ignored rather than treated as global or model-specific prompts.
+`all.md` is an exact reserved filename in each source. Variants such as `All.md` or `all@strict.md` are ignored rather than treated as global or model-specific prompts. Discovery is non-recursive; nested Markdown files are ignored.
 
 The extension preserves Pi's existing system prompt; it only prepends resolved prompt content during `before_agent_start`.
 
@@ -65,12 +73,19 @@ The extension registers `/model-prompt`:
 ```text
 /model-prompt status
 /model-prompt use <version>
+/model-prompt use global <version>
+/model-prompt use project <version>
 /model-prompt reset
+/model-prompt reset global
+/model-prompt reset project
 ```
 
-- `status` shows model identities, matched family, active variant, available versions, injected files, prompt directory, and diagnostics.
-- `use <version>` persists a named variant for the current matched model family.
-- `reset` clears the persisted variant and returns to the default prompt when available.
+- `status` shows model identities, matched family, global/project directories, active global/project variants, available versions, injected files by source, and diagnostics.
+- `use <version>` persists a project variant for the current matched model family (backward-compatible default).
+- `use global <version>` and `use project <version>` persist variants for a specific prompt source.
+- `reset` clears the project persisted variant and returns to the default project prompt when available.
+- `reset global` and `reset project` clear the selected variant for a specific source.
+- Running `/model-prompt` with no arguments opens source-specific selectors in UI-capable sessions when global and/or project sources have two or more versions for the current model family.
 
 Selection state is stored in the consuming project at:
 

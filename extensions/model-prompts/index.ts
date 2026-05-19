@@ -7,11 +7,46 @@ import {
 	formatResolutionStatus,
 	resolvePrompts,
 	setSelectedVersion,
+	type PromptSource,
 	type ResolutionResult,
 } from "./core.js";
 
 const EXPLICIT_USAGE =
-	"Use /model-prompt status, /model-prompt use <version>, or /model-prompt reset.";
+	"Use /model-prompt status, /model-prompt use <version>, /model-prompt use <global|project> <version>, /model-prompt reset, or /model-prompt reset <global|project>.";
+
+const SOURCES: PromptSource[] = ["global", "project"];
+
+function sourceLabel(source: PromptSource): string {
+	return source === "global" ? "Global" : "Project";
+}
+
+function selectorSources(result: ResolutionResult): PromptSource[] {
+	return SOURCES.filter(
+		(source) => result.sources[source].availableVersions.length >= 2,
+	);
+}
+
+function parseSourceAndVersion(rest: string[]): {
+	source: PromptSource;
+	version: string;
+} {
+	const [first, ...tail] = rest;
+	if (first === "global" || first === "--global") {
+		return { source: "global", version: tail.join(" ").trim() };
+	}
+	if (first === "project" || first === "--project") {
+		return { source: "project", version: tail.join(" ").trim() };
+	}
+	return { source: "project", version: rest.join(" ").trim() };
+}
+
+function parseResetSource(rest: string[]): PromptSource | undefined {
+	const [first] = rest;
+	if (!first) return "project";
+	if (first === "global" || first === "--global") return "global";
+	if (first === "project" || first === "--project") return "project";
+	return undefined;
+}
 
 export async function selectPromptVariant(
 	ctx: ExtensionCommandContext,
@@ -25,14 +60,6 @@ export async function selectPromptVariant(
 		return;
 	}
 
-	if (!result.availableVersions.length) {
-		ctx.ui.notify(
-			`No prompt variants are available for '${result.matchedModelKey}'. ${EXPLICIT_USAGE}`,
-			"warning",
-		);
-		return;
-	}
-
 	if (!ctx.hasUI) {
 		ctx.ui.notify(
 			`Interactive model prompt selection is unavailable in this session. ${EXPLICIT_USAGE}`,
@@ -41,32 +68,43 @@ export async function selectPromptVariant(
 		return;
 	}
 
-	const selected = await ctx.ui.select(
-		`Select prompt variant for '${result.matchedModelKey}':`,
-		result.availableVersions,
-	);
-	if (!selected) {
+	const sources = selectorSources(result);
+	if (!sources.length) {
 		ctx.ui.notify(
-			"Model prompt selection cancelled; previous selection unchanged.",
-			"info",
+			`No prompt sources have two or more selectable versions for '${result.matchedModelKey}'. ${EXPLICIT_USAGE}`,
+			"warning",
 		);
 		return;
 	}
 
-	if (selected === "default") {
-		setSelectedVersion(ctx.cwd, result.matchedModelKey, undefined);
+	for (const source of sources) {
+		const selected = await ctx.ui.select(
+			`Select ${sourceLabel(source)} prompt variant for '${result.matchedModelKey}':`,
+			result.sources[source].availableVersions,
+		);
+		if (!selected) {
+			ctx.ui.notify(
+				"Model prompt selection cancelled; previous selections unchanged.",
+				"info",
+			);
+			return;
+		}
+
+		if (selected === "default") {
+			setSelectedVersion(ctx.cwd, result.matchedModelKey, undefined, source);
+			ctx.ui.notify(
+				`Selected ${sourceLabel(source)} 'default' for '${result.matchedModelKey}' and cleared persisted ${source} selection.`,
+				"info",
+			);
+			continue;
+		}
+
+		setSelectedVersion(ctx.cwd, result.matchedModelKey, selected, source);
 		ctx.ui.notify(
-			`Selected 'default' for '${result.matchedModelKey}' and cleared persisted selection.`,
+			`Selected ${sourceLabel(source)} '${selected}' for '${result.matchedModelKey}'.`,
 			"info",
 		);
-		return;
 	}
-
-	setSelectedVersion(ctx.cwd, result.matchedModelKey, selected);
-	ctx.ui.notify(
-		`Selected '${selected}' for '${result.matchedModelKey}'.`,
-		"info",
-	);
 }
 
 export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
@@ -91,7 +129,15 @@ export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
 	pi.registerCommand("model-prompt", {
 		description: "Inspect or switch model-specific prompt variants",
 		getArgumentCompletions: (prefix) => {
-			const items = ["status", "use ", "reset"];
+			const items = [
+				"status",
+				"use ",
+				"use global ",
+				"use project ",
+				"reset",
+				"reset global",
+				"reset project",
+			];
 			const filtered = items.filter((item) => item.startsWith(prefix));
 			return filtered.length
 				? filtered.map((value) => ({ value, label: value }))
@@ -113,7 +159,7 @@ export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
 			}
 
 			if (action === "use") {
-				const version = rest.join(" ").trim();
+				const { source, version } = parseSourceAndVersion(rest);
 				if (!result.matchedModelKey) {
 					ctx.ui.notify(
 						"No model prompt family matches the active model.",
@@ -121,31 +167,37 @@ export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
 					);
 					return;
 				}
+				const availableVersions = result.sources[source].availableVersions;
 				if (!version) {
 					ctx.ui.notify(
-						`Usage: /model-prompt use <version>\nAvailable versions: ${result.availableVersions.join(", ") || "(none)"}`,
+						`Usage: /model-prompt use [global|project] <version>\nAvailable ${source} versions: ${availableVersions.join(", ") || "(none)"}`,
 						"warning",
 					);
 					return;
 				}
-				if (!result.availableVersions.includes(version)) {
+				if (!availableVersions.includes(version)) {
 					ctx.ui.notify(
-						`Variant '${version}' is not available for '${result.matchedModelKey}'. Available versions: ${result.availableVersions.join(", ") || "(none)"}`,
+						`${sourceLabel(source)} variant '${version}' is not available for '${result.matchedModelKey}'. Available ${source} versions: ${availableVersions.join(", ") || "(none)"}`,
 						"warning",
 					);
 					return;
 				}
 				if (version === "default") {
-					setSelectedVersion(ctx.cwd, result.matchedModelKey, undefined);
+					setSelectedVersion(
+						ctx.cwd,
+						result.matchedModelKey,
+						undefined,
+						source,
+					);
 					ctx.ui.notify(
-						`Reset '${result.matchedModelKey}' to default prompt variant.`,
+						`Reset ${source} '${result.matchedModelKey}' to default prompt variant.`,
 						"info",
 					);
 					return;
 				}
-				setSelectedVersion(ctx.cwd, result.matchedModelKey, version);
+				setSelectedVersion(ctx.cwd, result.matchedModelKey, version, source);
 				ctx.ui.notify(
-					`Selected '${version}' for '${result.matchedModelKey}'.`,
+					`Selected ${sourceLabel(source)} '${version}' for '${result.matchedModelKey}'.`,
 					"info",
 				);
 				return;
@@ -159,9 +211,17 @@ export default function modelPromptInjectionExtension(pi: ExtensionAPI) {
 					);
 					return;
 				}
-				setSelectedVersion(ctx.cwd, result.matchedModelKey, undefined);
+				const source = parseResetSource(rest);
+				if (!source) {
+					ctx.ui.notify(
+						"Usage: /model-prompt reset [global|project]",
+						"warning",
+					);
+					return;
+				}
+				setSelectedVersion(ctx.cwd, result.matchedModelKey, undefined, source);
 				ctx.ui.notify(
-					`Cleared selected model prompt variant for '${result.matchedModelKey}'.`,
+					`Cleared selected ${source} model prompt variant for '${result.matchedModelKey}'.`,
 					"info",
 				);
 				return;
