@@ -1,18 +1,4 @@
-## Requirements
-
-### Requirement: Installable Pi Package
-
-The extension SHALL be packaged as a standard Pi package that can be installed from npm, GitHub, or a local path with `pi install` or loaded with `pi -e`.
-
-#### Scenario: Package declares extension resources
-
-- **WHEN** Pi reads the package manifest
-- **THEN** `package.json` declares the extension entry through the `pi.extensions` field
-
-#### Scenario: Package is packed for npm
-
-- **WHEN** the package is packed for publication
-- **THEN** the tarball includes the extension files, README, license, package manifest, and example prompt files without requiring a project-local `.pi/extensions/` directory
+## MODIFIED Requirements
 
 ### Requirement: Prompt Directory Discovery
 
@@ -47,54 +33,6 @@ The extension SHALL discover prompt Markdown files from both the global `~/.pi/m
 
 - **WHEN** a Markdown file exists in a nested subdirectory below `~/.pi/model-prompts/prompts/`
 - **THEN** the extension ignores that nested file during global prompt discovery
-
-### Requirement: Prompt Filename Parsing
-
-The extension SHALL parse prompt filenames into reserved global prompts, default model prompts, and named model prompt variants.
-
-#### Scenario: Global prompt file
-
-- **WHEN** discovery finds `all.md`
-- **THEN** the extension treats it as the global prompt for all model families
-
-#### Scenario: Default model prompt file
-
-- **WHEN** discovery finds `gpt-5.5.md`
-- **THEN** the extension treats it as the default variant for model key `gpt-5.5`
-
-#### Scenario: Named model prompt variant file
-
-- **WHEN** discovery finds `gpt-5.5@strict.md`
-- **THEN** the extension treats it as version `strict` for model key `gpt-5.5`
-
-#### Scenario: Unsupported filename
-
-- **WHEN** discovery finds a file that cannot be parsed as `all.md`, `<model-key>.md`, or `<model-key>@<version>.md`
-- **THEN** the extension ignores that file and reports it in diagnostics without failing prompt injection
-
-### Requirement: Model Family Matching
-
-The extension SHALL match the active model to prompt model keys using deterministic fuzzy substring matching.
-
-#### Scenario: Model name contains prompt key
-
-- **WHEN** the active model identity is `ikun-gpt-5.5`
-- **THEN** the extension matches prompt files with model key `gpt-5.5`
-
-#### Scenario: Model id contains prompt key
-
-- **WHEN** the active model id contains `gpt-5.5`
-- **THEN** the extension matches prompt files with model key `gpt-5.5` even if the display name differs
-
-#### Scenario: Multiple prompt keys match
-
-- **WHEN** prompt keys `gpt`, `gpt-5.5`, and `gpt-5.5-mini` all match the active model identity
-- **THEN** the extension selects the longest matching model key
-
-#### Scenario: No prompt key matches
-
-- **WHEN** no discovered model prompt key matches the active model identity
-- **THEN** the extension injects `all.md` if present and injects no model-specific prompt
 
 ### Requirement: Prompt Injection Order
 
@@ -257,22 +195,3 @@ The extension SHALL provide a slash command for inspecting and changing the curr
 
 - **WHEN** the user requests a version that is not available for the requested or default prompt source and current matched model key
 - **THEN** the extension leaves the previous selection unchanged and reports the available versions for that source
-
-### Requirement: Safe Failure Behavior
-
-The extension SHALL fail softly and never block an agent run solely because model prompt resolution fails.
-
-#### Scenario: Prompt file cannot be read
-
-- **WHEN** a resolved prompt file cannot be read due to an filesystem error
-- **THEN** the extension skips that file, reports the error in diagnostics, and preserves Pi's existing system prompt
-
-#### Scenario: State file cannot be read
-
-- **WHEN** stored version selection state cannot be read
-- **THEN** the extension ignores the stored state for that run and uses default resolution rules
-
-#### Scenario: Extension has no resolved prompt content
-
-- **WHEN** no global or model-specific prompt content is resolved
-- **THEN** the extension returns no system prompt modification
